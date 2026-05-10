@@ -1,0 +1,301 @@
+name: CI/CD – ai-microservice
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ai-microservice
+  GO_VERSION: "1.24"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 0 – Compute registry routing context
+  # ─────────────────────────────────────────────────────────────────────────
+  context:
+    name: Compute Context
+    runs-on: ai-microservice-tst
+    outputs:
+      registry:     ${{ steps.ctx.outputs.registry }}
+      registry_ns:  ${{ steps.ctx.outputs.registry_ns }}
+      cluster:      ${{ steps.ctx.outputs.cluster }}
+      image_tag:    ${{ steps.ctx.outputs.image_tag }}
+      push_image:   ${{ steps.ctx.outputs.push_image }}
+      deploy:       ${{ steps.ctx.outputs.deploy }}
+      is_pr_deploy: ${{ steps.ctx.outputs.is_pr_deploy }}
+    steps:
+      - name: Compute routing
+        id: ctx
+        env:
+          IS_TAG:     ${{ startsWith(github.ref, 'refs/tags/') }}
+          IS_MAIN:    ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+          IS_LABELED: ${{ github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'deploy_tst' }}
+          PR_NUMBER:  ${{ github.event.pull_request.number }}
+          SHORT_SHA:  ${{ github.sha }}
+        run: |
+          SHORT="${SHORT_SHA:0:7}"
+          if [ "$IS_TAG" = "true" ]; then
+            echo "registry=registry.lab.carreira.cloud" >> "$GITHUB_OUTPUT"
+            echo "registry_ns=lab"                      >> "$GITHUB_OUTPUT"
+            echo "cluster=lab"                          >> "$GITHUB_OUTPUT"
+            echo "image_tag=${{ github.ref_name }}"     >> "$GITHUB_OUTPUT"
+            echo "push_image=true"                      >> "$GITHUB_OUTPUT"
+            echo "deploy=true"                          >> "$GITHUB_OUTPUT"
+            echo "is_pr_deploy=false"                   >> "$GITHUB_OUTPUT"
+          elif [ "$IS_MAIN" = "true" ]; then
+            echo "registry=registry.tst.carreira.cloud" >> "$GITHUB_OUTPUT"
+            echo "registry_ns=tst"                      >> "$GITHUB_OUTPUT"
+            echo "cluster=tst"                          >> "$GITHUB_OUTPUT"
+            echo "image_tag=main-${SHORT}"              >> "$GITHUB_OUTPUT"
+            echo "push_image=true"                      >> "$GITHUB_OUTPUT"
+            echo "deploy=true"                          >> "$GITHUB_OUTPUT"
+            echo "is_pr_deploy=false"                   >> "$GITHUB_OUTPUT"
+          elif [ "$IS_LABELED" = "true" ]; then
+            echo "registry=registry.tst.carreira.cloud" >> "$GITHUB_OUTPUT"
+            echo "registry_ns=tst"                      >> "$GITHUB_OUTPUT"
+            echo "cluster=tst"                          >> "$GITHUB_OUTPUT"
+            echo "image_tag=pr-${PR_NUMBER}-${SHORT}"   >> "$GITHUB_OUTPUT"
+            echo "push_image=true"                      >> "$GITHUB_OUTPUT"
+            echo "deploy=true"                          >> "$GITHUB_OUTPUT"
+            echo "is_pr_deploy=true"                    >> "$GITHUB_OUTPUT"
+          else
+            echo "registry=registry.tst.carreira.cloud" >> "$GITHUB_OUTPUT"
+            echo "registry_ns=tst"                      >> "$GITHUB_OUTPUT"
+            echo "cluster=tst"                          >> "$GITHUB_OUTPUT"
+            echo "image_tag=pr-${PR_NUMBER}-${SHORT}"   >> "$GITHUB_OUTPUT"
+            echo "push_image=false"                     >> "$GITHUB_OUTPUT"
+            echo "deploy=false"                         >> "$GITHUB_OUTPUT"
+            echo "is_pr_deploy=false"                   >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 1 – Lint
+  # ─────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ai-microservice-tst
+    needs: context
+    env:
+      GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.golangci-lint-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Configure Go caches for ARC runner
+        run: |
+          echo "GOMODCACHE=${{ github.workspace }}/.go/pkg/mod" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ github.workspace }}/.go-cache" >> "$GITHUB_ENV"
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.3
+          args: --timeout=5m
+          skip-cache: true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 2 – Unit Tests
+  # ─────────────────────────────────────────────────────────────────────────
+  test-unit:
+    name: Unit Tests
+    runs-on: ai-microservice-tst
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Configure Go caches for ARC runner
+        run: |
+          echo "GOMODCACHE=${{ github.workspace }}/.go/pkg/mod" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ github.workspace }}/.go-cache" >> "$GITHUB_ENV"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run unit tests
+        env:
+          GATEWAY_SECRET: ci-test-secret
+        run: |
+          go test -v -count=1 \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            ./internal/...
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -5
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 3
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 3 – Acceptance Tests (in-process, no Docker needed)
+  # ─────────────────────────────────────────────────────────────────────────
+  test-acceptance:
+    name: Acceptance Tests
+    runs-on: ai-microservice-tst
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Configure Go caches for ARC runner
+        run: |
+          echo "GOMODCACHE=${{ github.workspace }}/.go/pkg/mod" >> "$GITHUB_ENV"
+          echo "GOCACHE=${{ github.workspace }}/.go-cache" >> "$GITHUB_ENV"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run acceptance tests
+        env:
+          GATEWAY_SECRET: ci-test-secret
+        run: |
+          go test -v -count=1 -timeout 120s ./tests/acceptance/...
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 4 – Build & Push Docker image
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build & Push Image
+    runs-on: ai-microservice-tst
+    needs: [context, test-unit, test-acceptance]
+    if: needs.context.outputs.push_image == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ needs.context.outputs.registry }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Prune old image tags (keep latest 5)
+        env:
+          HARBOR_USER: ${{ secrets.REGISTRY_USERNAME }}
+          HARBOR_PASS: ${{ secrets.REGISTRY_PASSWORD }}
+          REGISTRY:    ${{ needs.context.outputs.registry }}
+          REGISTRY_NS: ${{ needs.context.outputs.registry_ns }}
+        run: |
+          API="https://${REGISTRY}/api/v2.0/projects/${REGISTRY_NS}/repositories/${{ env.IMAGE_NAME }}/artifacts"
+          DIGESTS=$(curl -sf -u "${HARBOR_USER}:${HARBOR_PASS}" \
+            "${API}?page_size=100&page=1&with_tag=true&sort=-push_time" \
+            | jq -r '.[5:] | .[].digest' 2>/dev/null || true)
+          if [ -z "$DIGESTS" ]; then
+            echo "Nothing to prune."
+          else
+            for DIGEST in $DIGESTS; do
+              curl -sf -u "${HARBOR_USER}:${HARBOR_PASS}" -X DELETE "${API}/${DIGEST}" || true
+            done
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ needs.context.outputs.registry }}/${{ needs.context.outputs.registry_ns }}/${{ env.IMAGE_NAME }}:${{ needs.context.outputs.image_tag }}
+          cache-from: type=registry,ref=${{ needs.context.outputs.registry }}/${{ needs.context.outputs.registry_ns }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to:   type=registry,ref=${{ needs.context.outputs.registry }}/${{ needs.context.outputs.registry_ns }}/${{ env.IMAGE_NAME }}:buildcache,mode=min
+          build-args: |
+            CI=true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 5 – Deploy via GitOps
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy → ${{ needs.context.outputs.cluster }}
+    runs-on: ai-microservice-tst
+    needs: [context, build]
+    if: needs.context.outputs.deploy == 'true'
+    environment:
+      name: ${{ needs.context.outputs.cluster }}
+    steps:
+      - name: Checkout k3s-gitops
+        uses: actions/checkout@v4
+        with:
+          repository: carreira-cloud/k3s-gitops
+          token: ${{ secrets.GITOPS_PAT }}
+          path: k3s-gitops
+
+      - name: Update image tag in GitOps manifests
+        env:
+          CLUSTER:     ${{ needs.context.outputs.cluster }}
+          REGISTRY:    ${{ needs.context.outputs.registry }}
+          REGISTRY_NS: ${{ needs.context.outputs.registry_ns }}
+          IMAGE_TAG:   ${{ needs.context.outputs.image_tag }}
+        run: |
+          cd k3s-gitops
+          MANIFEST="clusters/${CLUSTER}/apps/default/ai-microservice/deployment.yaml"
+          NEW_IMAGE="${REGISTRY}/${REGISTRY_NS}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+          echo "→ ${NEW_IMAGE}"
+          sed -i "s|image: .*/${{ env.IMAGE_NAME }}:.*|image: ${NEW_IMAGE}|g" "$MANIFEST"
+          sed -i "s|value: \"main-[a-f0-9]*\"|value: \"${IMAGE_TAG}\"|g" "$MANIFEST"
+          grep "image:\|VERSION" "$MANIFEST" | head -4
+
+      - name: Commit and push
+        env:
+          CLUSTER:   ${{ needs.context.outputs.cluster }}
+          IMAGE_TAG: ${{ needs.context.outputs.image_tag }}
+        run: |
+          cd k3s-gitops
+          git config user.name  "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add "clusters/${CLUSTER}/apps/default/ai-microservice/"
+          git diff --staged --quiet && echo "No changes." || \
+            (git commit -m "chore(${CLUSTER}): update ai-microservice to ${IMAGE_TAG}" \
+              && git pull --rebase origin main && git push)
+
+      - name: Summary
+        env:
+          CLUSTER:     ${{ needs.context.outputs.cluster }}
+          REGISTRY:    ${{ needs.context.outputs.registry }}
+          REGISTRY_NS: ${{ needs.context.outputs.registry_ns }}
+          IMAGE_TAG:   ${{ needs.context.outputs.image_tag }}
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image** | \`${REGISTRY}/${REGISTRY_NS}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | ${CLUSTER} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Flux CD will reconcile within ~1 minute." >> $GITHUB_STEP_SUMMARY
