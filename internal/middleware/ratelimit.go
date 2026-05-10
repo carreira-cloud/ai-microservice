@@ -51,7 +51,7 @@ func RateLimit(limiter *RateLimiter) gin.HandlerFunc {
 			retryAfter := 60 - time.Now().Second()
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error":                "rate_limit_exceeded",
+				"error":               "rate_limit_exceeded",
 				"retry_after_seconds": retryAfter,
 			})
 			return

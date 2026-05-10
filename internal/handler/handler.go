@@ -133,20 +133,22 @@ func completeHandler(svc *service.AIService) gin.HandlerFunc {
 			MaxTokens:      req.MaxTokens,
 			IdempotencyKey: req.IdempotencyKey,
 		}
+		var promptChars int
 		for _, m := range req.Messages {
 			svcReq.Messages = append(svcReq.Messages, provider.Message{Role: m.Role, Content: m.Content})
+			promptChars += len(m.Content)
 		}
 
 		result, err := svc.Complete(c.Request.Context(), tenantID, svcReq)
 		if err != nil {
-			metrics.Record(svc.ProviderName(), req.Model, 0, false, true, 0)
+			metrics.Record(svc.ProviderName(), req.Model, 0, false, true, promptChars)
 			c.JSON(http.StatusBadGateway, gin.H{"error": "provider_unavailable"})
 			return
 		}
 
 		cacheHit := result.Cached || result.Idempotent
 		c.Header("X-Cache", map[bool]string{true: "HIT", false: "MISS"}[cacheHit])
-		metrics.Record(svc.ProviderName(), req.Model, result.Response.LatencyMs, cacheHit, false, 0)
+		metrics.Record(svc.ProviderName(), req.Model, result.Response.LatencyMs, cacheHit, false, promptChars)
 
 		c.JSON(http.StatusOK, gin.H{
 			"content":       result.Response.Content,
@@ -179,9 +181,9 @@ func listPromptsHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id query param required"})
 			return
 		}
-		list, err := repo.List(tenantID)
+		list, err := repo.List(c.Request.Context(), tenantID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"templates": list, "count": len(list)})
@@ -195,7 +197,7 @@ func createPromptHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		tmpl, err := repo.Create(repository.CreateTemplateInput{
+		tmpl, err := repo.Create(c.Request.Context(), repository.CreateTemplateInput{
 			TenantID: req.TenantID, Name: req.Name, Description: req.Description,
 			SystemPrompt: req.SystemPrompt, Provider: req.Provider, Model: req.Model,
 			Temperature: req.Temperature, MaxTokens: req.MaxTokens, CacheTTLSec: req.CacheTTLSec,
@@ -205,7 +207,7 @@ func createPromptHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 			return
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 			return
 		}
 		c.JSON(http.StatusCreated, tmpl)
@@ -219,13 +221,13 @@ func getPromptHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id query param required"})
 			return
 		}
-		tmpl, err := repo.FindByID(tenantID, c.Param("id"))
+		tmpl, err := repo.FindByID(c.Request.Context(), tenantID, c.Param("id"))
 		if err == repository.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
 			return
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 			return
 		}
 		c.JSON(http.StatusOK, tmpl)
@@ -243,7 +245,7 @@ func updatePromptHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 		if tenantID == "" {
 			tenantID = c.Query("tenant_id")
 		}
-		v, err := repo.CreateVersion(tenantID, c.Param("id"), repository.CreateTemplateInput{
+		v, err := repo.CreateVersion(c.Request.Context(), tenantID, c.Param("id"), repository.CreateTemplateInput{
 			TenantID: tenantID, SystemPrompt: req.SystemPrompt,
 			Provider: req.Provider, Model: req.Model,
 			Temperature: req.Temperature, MaxTokens: req.MaxTokens, CacheTTLSec: req.CacheTTLSec,
@@ -253,7 +255,7 @@ func updatePromptHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 			return
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 			return
 		}
 		c.JSON(http.StatusOK, v)
@@ -267,13 +269,13 @@ func listVersionsHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id query param required"})
 			return
 		}
-		versions, err := repo.ListVersions(tenantID, c.Param("id"))
+		versions, err := repo.ListVersions(c.Request.Context(), tenantID, c.Param("id"))
 		if err == repository.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
 			return
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"versions": versions})

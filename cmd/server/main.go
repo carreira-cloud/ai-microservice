@@ -43,13 +43,13 @@ func main() {
 	rdb := cache.NewRedisClient(cfg.RedisURL)
 
 	// Wire dependencies.
-	auditWorker  := audit.NewWorker(db, 100)
+	auditWorker := audit.NewWorker(db, 100)
 	responseCache := cache.NewResponseCache(rdb, cfg.CacheTTLSeconds)
-	idemCache    := cache.NewIdempotencyCache(rdb)
-	limiter      := middleware.NewRateLimiter(rdb, cfg.RateLimitRPM)
-	prov         := copilot.New(cfg.GithubCopilotToken, nil)
-	promptRepo   := repository.NewPromptRepository(db)
-	aiSvc        := service.NewAIService(prov, promptRepo, responseCache, idemCache, auditWorker, cfg.CacheTTLSeconds)
+	idemCache := cache.NewIdempotencyCache(rdb)
+	limiter := middleware.NewRateLimiter(rdb, cfg.RateLimitRPM)
+	prov := copilot.New(cfg.GithubCopilotToken, nil)
+	promptRepo := repository.NewPromptRepository(db)
+	aiSvc := service.NewAIService(prov, promptRepo, responseCache, idemCache, auditWorker, cfg.CacheTTLSeconds)
 
 	auditWorker.Start()
 

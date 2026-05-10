@@ -5,7 +5,7 @@ import (
 
 	"github.com/carreira-cloud/ai-microservice/internal/config"
 	"github.com/carreira-cloud/ai-microservice/internal/model"
-	"github.com/glebarez/sqlite"  // pure-Go SQLite (no CGO)
+	"github.com/glebarez/sqlite" // pure-Go SQLite (no CGO)
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"

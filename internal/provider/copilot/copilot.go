@@ -104,7 +104,8 @@ func (p *Provider) Complete(ctx context.Context, req provider.CompletionRequest)
 	}, nil
 }
 
-// doRequest performs the HTTP call with one retry on network error.
+// doRequest performs the HTTP call with one retry on network (non-context) errors.
+// The body bytes are re-used safely because bytes.NewReader is seekable.
 func (p *Provider) doRequest(ctx context.Context, token string, body []byte) (*http.Response, error) {
 	do := func() (*http.Response, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, completionsURL, bytes.NewReader(body))
@@ -120,6 +121,10 @@ func (p *Provider) doRequest(ctx context.Context, token string, body []byte) (*h
 
 	res, err := do()
 	if err != nil {
+		// Do NOT retry on context cancellation or deadline — the caller has moved on.
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("context: %w", ctx.Err())
+		}
 		logrus.WithError(err).Warn("copilot: network error — retrying once")
 		res, err = do()
 		if err != nil {

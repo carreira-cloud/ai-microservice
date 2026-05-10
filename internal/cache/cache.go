@@ -63,6 +63,7 @@ func (c *ResponseCache) Set(ctx context.Context, key string, resp *provider.Comp
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
+		logrus.WithError(err).Warn("cache: marshal failed — skipping Set")
 		return
 	}
 	if ttl <= 0 {

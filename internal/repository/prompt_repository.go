@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -34,10 +35,10 @@ type CreateTemplateInput struct {
 }
 
 // Create creates a PromptTemplate and its initial PromptVersion in a transaction.
-func (r *PromptRepository) Create(input CreateTemplateInput) (*model.PromptTemplate, error) {
+func (r *PromptRepository) Create(ctx context.Context, input CreateTemplateInput) (*model.PromptTemplate, error) {
 	var tmpl *model.PromptTemplate
-	err := r.db.Transaction(func(tx *gorm.DB) error {
-		// Check uniqueness (tenant_id, name)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Check uniqueness (tenant_id, name) — DB constraint is the final guard.
 		var count int64
 		tx.Model(&model.PromptTemplate{}).
 			Where("tenant_id = ? AND name = ?", input.TenantID, input.Name).
@@ -47,12 +48,12 @@ func (r *PromptRepository) Create(input CreateTemplateInput) (*model.PromptTempl
 		}
 
 		t := &model.PromptTemplate{
-			ID:        uuid.NewString(),
-			TenantID:  input.TenantID,
-			Name:      input.Name,
+			ID:          uuid.NewString(),
+			TenantID:    input.TenantID,
+			Name:        input.Name,
 			Description: input.Description,
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
+			CreatedAt:   time.Now().UTC(),
+			UpdatedAt:   time.Now().UTC(),
 		}
 		if err := tx.Create(t).Error; err != nil {
 			return err
@@ -86,41 +87,46 @@ func (r *PromptRepository) Create(input CreateTemplateInput) (*model.PromptTempl
 }
 
 // FindByID returns a template with its active version, scoped to tenantID.
-func (r *PromptRepository) FindByID(tenantID, id string) (*model.PromptTemplate, error) {
+func (r *PromptRepository) FindByID(ctx context.Context, tenantID, id string) (*model.PromptTemplate, error) {
 	var t model.PromptTemplate
-	err := r.db.Where("id = ? AND tenant_id = ?", id, tenantID).First(&t).Error
+	err := r.db.WithContext(ctx).
+		Where("id = ? AND tenant_id = ?", id, tenantID).
+		First(&t).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	// Load active version
+	// Load active version.
 	if t.ActiveVersionID != "" {
 		var v model.PromptVersion
-		if e := r.db.Where("id = ?", t.ActiveVersionID).First(&v).Error; e == nil {
+		if e := r.db.WithContext(ctx).Where("id = ?", t.ActiveVersionID).First(&v).Error; e == nil {
 			t.ActiveVersion = &v
 		}
 	}
 	return &t, nil
 }
 
-// List returns all templates for the tenant.
-func (r *PromptRepository) List(tenantID string) ([]model.PromptTemplate, error) {
+// List returns all templates for the tenant, ordered by created_at DESC.
+func (r *PromptRepository) List(ctx context.Context, tenantID string) ([]model.PromptTemplate, error) {
 	var list []model.PromptTemplate
-	err := r.db.Where("tenant_id = ?", tenantID).Order("created_at DESC").Find(&list).Error
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Order("created_at DESC").
+		Find(&list).Error
 	return list, err
 }
 
 // CreateVersion adds a new version to an existing template and sets it as active.
-func (r *PromptRepository) CreateVersion(tenantID, templateID string, input CreateTemplateInput) (*model.PromptVersion, error) {
-	tmpl, err := r.FindByID(tenantID, templateID)
+func (r *PromptRepository) CreateVersion(ctx context.Context, tenantID, templateID string, input CreateTemplateInput) (*model.PromptVersion, error) {
+	tmpl, err := r.FindByID(ctx, tenantID, templateID)
 	if err != nil {
 		return nil, err
 	}
 
 	var maxVersion int
-	r.db.Model(&model.PromptVersion{}).
+	r.db.WithContext(ctx).Model(&model.PromptVersion{}).
 		Where("template_id = ?", templateID).
 		Select("COALESCE(MAX(version), 0)").
 		Scan(&maxVersion)
@@ -138,7 +144,7 @@ func (r *PromptRepository) CreateVersion(tenantID, templateID string, input Crea
 		CreatedAt:    time.Now().UTC(),
 	}
 
-	return v, r.db.Transaction(func(tx *gorm.DB) error {
+	return v, r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(v).Error; err != nil {
 			return fmt.Errorf("create version: %w", err)
 		}
@@ -149,13 +155,16 @@ func (r *PromptRepository) CreateVersion(tenantID, templateID string, input Crea
 }
 
 // ListVersions returns all versions for a template, ordered by version DESC.
-func (r *PromptRepository) ListVersions(tenantID, templateID string) ([]model.PromptVersion, error) {
-	// Confirm template belongs to tenant
-	if _, err := r.FindByID(tenantID, templateID); err != nil {
+func (r *PromptRepository) ListVersions(ctx context.Context, tenantID, templateID string) ([]model.PromptVersion, error) {
+	// Confirm template belongs to tenant.
+	if _, err := r.FindByID(ctx, tenantID, templateID); err != nil {
 		return nil, err
 	}
 	var versions []model.PromptVersion
-	err := r.db.Where("template_id = ?", templateID).Order("version DESC").Find(&versions).Error
+	err := r.db.WithContext(ctx).
+		Where("template_id = ?", templateID).
+		Order("version DESC").
+		Find(&versions).Error
 	return versions, err
 }
 

@@ -3,13 +3,13 @@ package model
 import "time"
 
 // PromptTemplate is the top-level prompt entity, owned by a tenant.
-// Uniqueness is enforced at DB level as (tenant_id, name).
+// Uniqueness is enforced at DB level AND via GORM AutoMigrate as (tenant_id, name).
 type PromptTemplate struct {
-	ID              string `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	Name            string `gorm:"not null"                    json:"name"`
-	Description     string `gorm:"type:text"                   json:"description,omitempty"`
-	ActiveVersionID string `gorm:"type:varchar(36)"            json:"active_version_id,omitempty"`
-	TenantID        string `gorm:"type:varchar(64);not null;index" json:"tenant_id"`
+	ID              string    `gorm:"primaryKey;type:varchar(36)"                              json:"id"`
+	Name            string    `gorm:"not null;uniqueIndex:idx_template_tenant_name"            json:"name"`
+	Description     string    `gorm:"type:text"                                                json:"description,omitempty"`
+	ActiveVersionID string    `gorm:"type:varchar(36)"                                         json:"active_version_id,omitempty"`
+	TenantID        string    `gorm:"type:varchar(64);not null;index;uniqueIndex:idx_template_tenant_name" json:"tenant_id"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 

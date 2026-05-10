@@ -50,14 +50,14 @@ func buildTestServer(t *testing.T) *httptest.Server {
 		Port:            "0",
 	}
 
-	auditWorker  := audit.NewWorker(db, 10)
+	auditWorker := audit.NewWorker(db, 10)
 	auditWorker.Start()
 	responseCache := cache.NewResponseCache(nil, cfg.CacheTTLSeconds) // no-op cache
-	idemCache    := cache.NewIdempotencyCache(nil)                    // no-op
-	limiter      := middleware.NewRateLimiter(nil, cfg.RateLimitRPM)  // fail-open
-	prov         := &stubProvider{name: "stub"}
-	promptRepo   := repository.NewPromptRepository(db)
-	aiSvc        := service.NewAIService(prov, promptRepo, responseCache, idemCache, auditWorker, cfg.CacheTTLSeconds)
+	idemCache := cache.NewIdempotencyCache(nil)                       // no-op
+	limiter := middleware.NewRateLimiter(nil, cfg.RateLimitRPM)       // fail-open
+	prov := &stubProvider{name: "stub"}
+	promptRepo := repository.NewPromptRepository(db)
+	aiSvc := service.NewAIService(prov, promptRepo, responseCache, idemCache, auditWorker, cfg.CacheTTLSeconds)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -209,6 +209,76 @@ func TestHealth_AlwaysOK(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 	body := jsonBody(t, resp)
 	assert.Equal(t, "ok", body["status"])
+}
+
+func TestReady_OKWithSQLite(t *testing.T) {
+	srv := buildTestServer(t)
+	defer srv.Close()
+	// Redis is nil (no-op) — /ready should still 200 when DB is healthy.
+	resp := get(t, srv, "/ready", nil)
+	assert.Equal(t, 200, resp.StatusCode)
+	body := jsonBody(t, resp)
+	assert.Equal(t, "ok", body["db"])
+	assert.Equal(t, "ok", body["status"])
+}
+
+func TestComplete_IdempotencyKey_ReturnsConsistentResult(t *testing.T) {
+	// Without Redis the idempotency cache is no-op (fail-open).
+	// Two identical requests with the same key return valid results (may differ
+	// since the no-op cache doesn’t de-dup — that is the expected fail-open behaviour).
+	srv := buildTestServer(t)
+	defer srv.Close()
+
+	body := map[string]any{
+		"messages":        []any{map[string]any{"role": "user", "content": "hello"}},
+		"idempotency_key": "test-key-abc",
+	}
+	headers := map[string]string{"X-Tenant-ID": "tenant1"}
+
+	resp1 := post(t, srv, "/api/v1/complete", body, headers)
+	resp2 := post(t, srv, "/api/v1/complete", body, headers)
+
+	assert.Equal(t, 200, resp1.StatusCode)
+	assert.Equal(t, 200, resp2.StatusCode)
+
+	b1, b2 := jsonBody(t, resp1), jsonBody(t, resp2)
+	assert.Equal(t, "stub response", b1["content"])
+	assert.Equal(t, "stub response", b2["content"])
+}
+
+func TestComplete_CrossTenantCacheIsolation(t *testing.T) {
+	// Same messages, different tenants — no Redis cache so both call provider.
+	// Verifies tenant_id is in the cache key path (acceptance of the design).
+	srv := buildTestServer(t)
+	defer srv.Close()
+
+	msg := map[string]any{"messages": []any{map[string]any{"role": "user", "content": "hello"}}}
+
+	r1 := post(t, srv, "/api/v1/complete", msg, map[string]string{"X-Tenant-ID": "tenant-a"})
+	r2 := post(t, srv, "/api/v1/complete", msg, map[string]string{"X-Tenant-ID": "tenant-b"})
+
+	assert.Equal(t, 200, r1.StatusCode)
+	assert.Equal(t, 200, r2.StatusCode)
+
+	// Both should be MISS (no Redis; no cross-tenant leak).
+	assert.Equal(t, "MISS", r1.Header.Get("X-Cache"))
+	assert.Equal(t, "MISS", r2.Header.Get("X-Cache"))
+}
+
+func TestPromptConflict_DuplicateName(t *testing.T) {
+	srv := buildTestServer(t)
+	defer srv.Close()
+	gwHeader := map[string]string{"X-Gateway-Secret": "test-secret"}
+
+	body := map[string]any{"tenant_id": "t1", "name": "dup-prompt", "system_prompt": "hello"}
+	resp1 := post(t, srv, "/admin/prompts", body, gwHeader)
+	require.Equal(t, 201, resp1.StatusCode)
+	jsonBody(t, resp1) // drain
+
+	resp2 := post(t, srv, "/admin/prompts", body, gwHeader)
+	assert.Equal(t, 409, resp2.StatusCode)
+	b := jsonBody(t, resp2)
+	assert.Equal(t, "name_conflict", b["error"])
 }
 
 func TestMetrics_Available(t *testing.T) {

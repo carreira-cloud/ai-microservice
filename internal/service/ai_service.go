@@ -103,8 +103,10 @@ func (s *AIService) Complete(ctx context.Context, tenantID string, req Completio
 	// 3. Response cache (key includes tenantID for isolation).
 	cacheKey := buildCacheKey(tenantID, s.provider.Name(), resolvedModel(req), messages)
 	if cached, ok := s.responseCache.Get(ctx, cacheKey); ok {
-		logrus.WithFields(logrus.Fields{"tenant_id": tenantID, "cache_key": cacheKey[:8]}).
-			Info("ai_service: cache hit")
+		logrus.WithFields(logrus.Fields{
+			"tenant_id": tenantID,
+			"cache_key": cacheKey[len("ai:resp:") : len("ai:resp:")+12],
+		}).Info("ai_service: cache hit")
 		s.enqueueAudit(audit.Entry{
 			TenantID:     tenantID,
 			TemplateID:   req.PromptID,
@@ -131,14 +133,19 @@ func (s *AIService) Complete(ctx context.Context, tenantID string, req Completio
 		errStr = err.Error()
 	}
 	s.enqueueAudit(audit.Entry{
-		TenantID:     tenantID,
-		TemplateID:   req.PromptID,
-		Provider:     s.provider.Name(),
-		Model:        resolvedModel(req),
-		PromptHash:   hashMessages(messages),
-		ResponseHash: func() string { if resp != nil { return hashString(resp.Content) }; return "" }(),
-		LatencyMs:    time.Since(started).Milliseconds(),
-		Error:        errStr,
+		TenantID:   tenantID,
+		TemplateID: req.PromptID,
+		Provider:   s.provider.Name(),
+		Model:      resolvedModel(req),
+		PromptHash: hashMessages(messages),
+		ResponseHash: func() string {
+			if resp != nil {
+				return hashString(resp.Content)
+			}
+			return ""
+		}(),
+		LatencyMs: time.Since(started).Milliseconds(),
+		Error:     errStr,
 	})
 
 	if err != nil {
@@ -156,12 +163,12 @@ func (s *AIService) Complete(ctx context.Context, tenantID string, req Completio
 	}
 
 	logrus.WithFields(logrus.Fields{
-		"tenant_id":     tenantID,
-		"prompt_id":     req.PromptID,
-		"provider":      s.provider.Name(),
-		"model":         resolvedModel(req),
-		"latency_ms":    resp.LatencyMs,
-		"cache_hit":     false,
+		"tenant_id":      tenantID,
+		"prompt_id":      req.PromptID,
+		"provider":       s.provider.Name(),
+		"model":          resolvedModel(req),
+		"latency_ms":     resp.LatencyMs,
+		"cache_hit":      false,
 		"response_chars": len(resp.Content),
 	}).Info("ai_service: complete")
 
@@ -169,7 +176,7 @@ func (s *AIService) Complete(ctx context.Context, tenantID string, req Completio
 }
 
 func (s *AIService) resolveTemplate(ctx context.Context, tenantID, templateID string, vars map[string]string) ([]provider.Message, time.Duration, error) {
-	tmpl, err := s.promptRepo.FindByID(tenantID, templateID)
+	tmpl, err := s.promptRepo.FindByID(ctx, tenantID, templateID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -203,7 +210,7 @@ func buildCacheKey(tenantID, providerName, model string, msgs []provider.Message
 	h := sha256.New()
 	data, _ := json.Marshal(struct {
 		T, P, M string
-		Msgs     []provider.Message
+		Msgs    []provider.Message
 	}{tenantID, providerName, model, msgs})
 	h.Write(data)
 	return "ai:resp:" + hex.EncodeToString(h.Sum(nil))
