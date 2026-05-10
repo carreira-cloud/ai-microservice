@@ -22,7 +22,7 @@ func makeStub(t *testing.T, tokenCalls, completionCalls *atomic.Int32) *httptest
 	mux.HandleFunc("/copilot_internal/v2/token", func(w http.ResponseWriter, r *http.Request) {
 		tokenCalls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"token":      "test-copilot-token",
 			"expires_at": time.Now().Add(30 * time.Minute).Unix(),
 		})
@@ -31,7 +31,7 @@ func makeStub(t *testing.T, tokenCalls, completionCalls *atomic.Int32) *httptest
 	mux.HandleFunc("/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		completionCalls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]string{"role": "assistant", "content": "test response"}, "finish_reason": "stop"},
 			},
@@ -65,7 +65,7 @@ func TestCopilot_NetworkRetry(t *testing.T) {
 	var attempts atomic.Int32
 	mux := http.NewServeMux()
 	mux.HandleFunc("/copilot_internal/v2/token", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"token": "tok", "expires_at": time.Now().Add(30 * time.Minute).Unix(),
 		})
 	})
@@ -76,13 +76,13 @@ func TestCopilot_NetworkRetry(t *testing.T) {
 			hj, ok := w.(http.Hijacker)
 			if ok {
 				conn, _, _ := hj.Hijack()
-				conn.Close()
+				_ = conn.Close()
 				return
 			}
 			http.Error(w, "fail", 500)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]string{"role": "assistant", "content": "retried"}, "finish_reason": "stop"},
 			},
@@ -103,12 +103,12 @@ func TestCopilot_NetworkRetry(t *testing.T) {
 func TestCopilot_BothAttemptsFail(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/copilot_internal/v2/token", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"token": "tok", "expires_at": time.Now().Add(30 * time.Minute).Unix()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"token": "tok", "expires_at": time.Now().Add(30 * time.Minute).Unix()})
 	})
 	mux.HandleFunc("/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		hj, _ := w.(http.Hijacker)
 		conn, _, _ := hj.Hijack()
-		conn.Close()
+		_ = conn.Close()
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()

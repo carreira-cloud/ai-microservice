@@ -78,7 +78,7 @@ func (p *Provider) Complete(ctx context.Context, req provider.CompletionRequest)
 	if err != nil {
 		return nil, fmt.Errorf("copilot: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("copilot: http %d", res.StatusCode)
@@ -154,7 +154,7 @@ func (p *Provider) getToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("token exchange: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("token exchange: http %d", res.StatusCode)

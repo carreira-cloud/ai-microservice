@@ -102,7 +102,7 @@ func jsonBody(t *testing.T, resp *http.Response) map[string]any {
 	t.Helper()
 	var m map[string]any
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&m))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return m
 }
 

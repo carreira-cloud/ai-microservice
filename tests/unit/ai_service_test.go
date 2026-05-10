@@ -3,9 +3,7 @@ package service_test
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/carreira-cloud/ai-microservice/internal/audit"
 	"github.com/carreira-cloud/ai-microservice/internal/cache"
 	"github.com/carreira-cloud/ai-microservice/internal/database"
 	"github.com/carreira-cloud/ai-microservice/internal/provider"
@@ -29,26 +27,6 @@ func (p *trackingProvider) Complete(_ context.Context, _ provider.CompletionRequ
 	return p.resp, p.err
 }
 
-func buildService(t *testing.T) (*service.AIService, *trackingProvider, *cache.ResponseCache, *repository.PromptRepository) {
-	t.Helper()
-	db, err := database.OpenTestDB()
-	require.NoError(t, err)
-
-	prov := &trackingProvider{resp: &provider.CompletionResponse{Content: "hello", FinishReason: "stop", LatencyMs: 5}}
-	respCache := cache.NewResponseCache(nil, 3600) // no-op Redis
-	idemCache := cache.NewIdempotencyCache(nil)
-	worker := audit.NewWorker(db, 10)
-	worker.Start()
-	repo := repository.NewPromptRepository(db)
-
-	svc := service.NewAIService(prov, repo, respCache, idemCache, worker, 3600)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		worker.Drain(ctx)
-	})
-	return svc, prov, respCache, repo
-}
 
 func TestAIService_Complete_BasicSuccess(t *testing.T) {
 	db, _ := database.OpenTestDB()
