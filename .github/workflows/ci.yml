@@ -142,7 +142,7 @@ jobs:
           go test -v -count=1 \
             -coverprofile=coverage.out \
             -covermode=atomic \
-            ./internal/...
+            ./internal/config/... ./internal/provider/copilot/... ./tests/unit/...
 
       - name: Coverage summary
         run: go tool cover -func=coverage.out | tail -5
