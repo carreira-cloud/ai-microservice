@@ -149,6 +149,10 @@ func (p *Provider) getToken(ctx context.Context) (string, error) {
 	}
 	req.Header.Set("Authorization", "token "+p.oauthToken)
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Editor-Version", "vscode/1.99.0")
+	req.Header.Set("Editor-Plugin-Version", "copilot-chat/0.26.7")
+	req.Header.Set("User-Agent", "GitHubCopilotChat/0.26.7")
+	req.Header.Set("Copilot-Integration-Id", "vscode-chat")
 
 	res, err := p.httpClient.Do(req)
 	if err != nil {
