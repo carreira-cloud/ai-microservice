@@ -47,3 +47,5 @@ type AuditLog struct {
 	Error        string    `gorm:"type:text"                   json:"error,omitempty"`
 	CreatedAt    time.Time `gorm:"index:idx_audit_tenant_time" json:"created_at"`
 }
+
+func (AuditLog) TableName() string { return "ai_audit_logs" }

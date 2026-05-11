@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -141,6 +142,7 @@ func completeHandler(svc *service.AIService) gin.HandlerFunc {
 
 		result, err := svc.Complete(c.Request.Context(), tenantID, svcReq)
 		if err != nil {
+			logrus.WithField("error", err.Error()).Error("handler: provider complete failed")
 			metrics.Record(svc.ProviderName(), req.Model, 0, false, true, promptChars)
 			c.JSON(http.StatusBadGateway, gin.H{"error": "provider_unavailable"})
 			return
