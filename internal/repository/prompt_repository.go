@@ -108,6 +108,33 @@ func (r *PromptRepository) FindByID(ctx context.Context, tenantID, id string) (*
 	return &t, nil
 }
 
+// FindByIDOrName looks up a template by UUID first, falling back to name.
+// This allows callers to use either the UUID or the human-readable name.
+func (r *PromptRepository) FindByIDOrName(ctx context.Context, tenantID, idOrName string) (*model.PromptTemplate, error) {
+	// Try UUID first.
+	if tmpl, err := r.FindByID(ctx, tenantID, idOrName); err == nil {
+		return tmpl, nil
+	}
+	// Fall back to name lookup.
+	var t model.PromptTemplate
+	err := r.db.WithContext(ctx).
+		Where("name = ? AND tenant_id = ?", idOrName, tenantID).
+		First(&t).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if t.ActiveVersionID != "" {
+		var v model.PromptVersion
+		if e := r.db.WithContext(ctx).Where("id = ?", t.ActiveVersionID).First(&v).Error; e == nil {
+			t.ActiveVersion = &v
+		}
+	}
+	return &t, nil
+}
+
 // List returns all templates for the tenant, ordered by created_at DESC.
 func (r *PromptRepository) List(ctx context.Context, tenantID string) ([]model.PromptTemplate, error) {
 	var list []model.PromptTemplate

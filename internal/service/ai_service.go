@@ -176,7 +176,7 @@ func (s *AIService) Complete(ctx context.Context, tenantID string, req Completio
 }
 
 func (s *AIService) resolveTemplate(ctx context.Context, tenantID, templateID string, vars map[string]string) ([]provider.Message, time.Duration, error) {
-	tmpl, err := s.promptRepo.FindByID(ctx, tenantID, templateID)
+	tmpl, err := s.promptRepo.FindByIDOrName(ctx, tenantID, templateID)
 	if err != nil {
 		return nil, 0, err
 	}
