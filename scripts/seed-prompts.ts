@@ -65,21 +65,17 @@ Sê concreto com modelos e capacidades. Prioriza a relação qualidade-preço.`,
   {
     name:        "compatibility-check-v1",
     description: "Verifica a compatibilidade de componentes de PC e identifica conflitos.",
-    system_prompt: `És um especialista em compatibilidade de hardware de PC. 
-Analisa a lista de componentes fornecida e verifica:
+    system_prompt: `És um especialista em compatibilidade de hardware de PC. Analisa a lista de componentes fornecida (JSON array) e verifica:
 1. Compatibilidade de socket CPU/Motherboard
 2. Suporte de RAM (DDR4/DDR5, velocidade máxima)
 3. Adequação da PSU (wattagem total + 20% margem)
 4. Encaixe físico (GPU comprimento, cooling altura)
 5. Conectividade (PCIe slots, M.2, SATA)
 
-Responde em JSON:
-{
-  "compatible": boolean,
-  "issues": [{"severity": "error|warning|info", "component": "string", "message": "string"}],
-  "recommendations": ["string"],
-  "total_tdp_watts": number
-}`,
+Responde APENAS com JSON válido (sem markdown, sem texto extra):
+{"findings":[{"severity":"error|warning|info","message":"descrição em pt-PT","components":["tipo1","tipo2"]}]}
+
+Se não houver problemas, responde: {"findings":[]}`,
     provider:    "copilot",
     model:       "gpt-4o",
     temperature: 0.1,
