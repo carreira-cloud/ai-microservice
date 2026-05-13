@@ -280,9 +280,17 @@ jobs:
           git config user.name  "GitHub Actions"
           git config user.email "actions@github.com"
           git add "clusters/${CLUSTER}/apps/default/ai-microservice/"
-          git diff --staged --quiet && echo "No changes." || \
-            (git commit -m "chore(${CLUSTER}): update ai-microservice to ${IMAGE_TAG}" \
-              && git pull --rebase origin main && git push)
+          if git diff --staged --quiet; then
+            echo "No changes."
+          else
+            git commit -m "chore(${CLUSTER}): update ai-microservice to ${IMAGE_TAG}"
+            # Retry push up to 5 times to handle concurrent writes to k3s-gitops
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main && git push && break
+              echo "Push attempt $i failed, retrying in 5s…"
+              sleep 5
+            done
+          fi
 
       - name: Summary
         env:
