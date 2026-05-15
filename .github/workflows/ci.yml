@@ -197,6 +197,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+
+      - name: Trust registry self-signed CA
+        run: |
+          sudo mkdir -p /etc/docker/certs.d/registry.lab.carreira.cloud
+          cat <<'CERT' | sudo tee /etc/docker/certs.d/registry.lab.carreira.cloud/ca.crt
+          -----BEGIN CERTIFICATE-----
+          MIIFjjCCA3agAwIBAgIUPiRgQBhJjQoZFHe6w5MIMy5xplwwDQYJKoZIhvcNAQEL
+          BQAwPzEkMCIGA1UEAwwbcmVnaXN0cnkubGFiLmNhcnJlaXJhLmNsb3VkMRcwFQYD
+          VQQKDA5jYXJyZWlyYS1jbG91ZDAeFw0yNjA1MTUxMzQxMzdaFw0zNjA1MTIxMzQx
+          MzdaMD8xJDAiBgNVBAMMG3JlZ2lzdHJ5LmxhYi5jYXJyZWlyYS5jbG91ZDEXMBUG
+          A1UECgwOY2FycmVpcmEtY2xvdWQwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIK
+          AoICAQC2V9cFOH8MzMdMkrbAgkGmX72fq+nmzThVP9a3RKK4YZPt3iV4cEswZbZ1
+          2nfh4cy3Ll4HKe0+9L5j2oghcioj2hBUAbvOE0IkyY3l1sVb3cVf0A46KCmO7IKk
+          R/YAPj6napNxnVdNBAA6czTTD/1axkVas6QQzQiYOLFvdJCXlHmMeuLPyKsG5Jrl
+          psXgak8IJwL/plf3xIH3yYqW99bLAgNdFeMulh/uWEWSgTEK/AkDtf3ICPBYR7qy
+          amZJus/ONJTWvEyv4cWcs0Ej5cV6GwE5LOM3drI3HaZUU0buhUC8HVr/fzIIDSYx
+          SXj4JjKL/TxNUxifMpLXUDOHZ9xK2rrcxwXh/rcUN0Z7AP3sCnNcKBCYhiWwXRyg
+          3cK2LzFkeSldTsJexI9Q6MewFu4gKBsEWJk4qBEmRoGawVLljQ205ZLTJv7bn1oU
+          TYFHR6KRuSuUA2WKbz+u/U3HQyP1t2XRFnvf4tU3Zsn8BrhrgnwyAZWPQOrvyZ+G
+          48p3maUNHUBgsO2JBurKtzpAHMRwQE1MMNS8Vnsf+aPibIrrnmmD37p/R6y1MDY6
+          PSZDV47oxB2Ox0kIlPneI1I4i9leGCH8z+IXdgD8pbLAUHGYtNJhFDNvBu4Cdnmq
+          3ZP6q7xLGhXBRWlNfQUj+bBVSthrziid/jJI4taYrEU2mdkvtwIDAQABo4GBMH8w
+          HQYDVR0OBBYEFJlxZj8x7BXMyEMKySPJOX8fSuRLMB8GA1UdIwQYMBaAFJlxZj8x
+          7BXMyEMKySPJOX8fSuRLMA8GA1UdEwEB/wQFMAMBAf8wLAYDVR0RBCUwI4IbcmVn
+          aXN0cnkubGFiLmNhcnJlaXJhLmNsb3VkhwTAqAriMA0GCSqGSIb3DQEBCwUAA4IC
+          AQBFhjG3B13e4o3q+H0yaLQoiSVHe1SHK8I7vcqVM9tSs20CDijM9WNUNPWkFmeW
+          GtlRyvBRKKV2v6A8bw6QOgQgjCEhX8wHaDmMpotsUe5l+tNnsYLJYZee9qliKSKb
+          SUXNdLBNV7mU8PW1aSy0iFfYfk9WcLjsjDOX1IKmzQNHTnxeHz7bCxRTA6oKptFN
+          OSyEQ0LZrEQoBqJRiQnkzVu8reQx8NLMDZIr1ReTDo3BVQ/z0h3K48AmAa3DcKSJ
+          bliOC1H0mm15aExoZonIdT4qoLodeMbiIJ/oQfCwNJt0iHzG01AHJ7Msg8BrEOYA
+          ovZl1Q3JC2KbtcjCQU5AOAA9Kiogghgyd/Xg8MTqoBZmipSLCpp604w7ntdPelEv
+          eAZrJA8jFKnuYHmzQqfqOy+KlE9znAi4n+56Doc4g45U2rYESDWvGYVsloQVSzoP
+          mENARclpStYXdyeRzwC+EydOky05dU00QE8LNZIzgKUt7a4e1DKRl4G9O6PC3sfY
+          l4WEMJ8vI8Y860d9QdXu68WmTcYw0KkW6Cf3ZOjE0IigNAvKD5NUEgSPYyysdhtd
+          MU9HuyXzO1ylpqQqHHpF0Ri8RPlsB7yCFz2EznwxcY6OQBpLJxz0UPxbVzh64BOm
+          gQgBYevKvEf+U+Ec0Z5OIWdwIReXjc4iu6YOwYvY69QNTA==
+          -----END CERTIFICATE-----
+          CERT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
