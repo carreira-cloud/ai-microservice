@@ -274,6 +274,7 @@ jobs:
           tags: ${{ needs.context.outputs.registry }}/${{ needs.context.outputs.registry_ns }}/${{ env.IMAGE_NAME }}:${{ needs.context.outputs.image_tag }}
           cache-from: type=registry,ref=${{ needs.context.outputs.registry }}/${{ needs.context.outputs.registry_ns }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to:   type=registry,ref=${{ needs.context.outputs.registry }}/${{ needs.context.outputs.registry_ns }}/${{ env.IMAGE_NAME }}:buildcache,mode=min
+          pull: false
           build-args: |
             CI=true
 
