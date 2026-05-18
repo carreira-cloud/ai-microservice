@@ -287,3 +287,89 @@ func TestMetrics_Available(t *testing.T) {
 	resp := get(t, srv, "/metrics", nil)
 	assert.Equal(t, 200, resp.StatusCode)
 }
+
+func TestAdminListPrompts_QueryParam(t *testing.T) {
+	srv := buildTestServer(t)
+	defer srv.Close()
+	gw := map[string]string{"X-Gateway-Secret": "test-secret"}
+
+	// seed one prompt
+	post(t, srv, "/admin/prompts", map[string]any{
+		"tenant_id": "t-list", "name": "list-test", "system_prompt": "hello",
+	}, gw)
+
+	resp := get(t, srv, "/admin/prompts?tenant_id=t-list", gw)
+	require.Equal(t, 200, resp.StatusCode)
+	b := jsonBody(t, resp)
+	// response key must be "prompts" (not "templates")
+	prompts, ok := b["prompts"].([]any)
+	require.True(t, ok, "expected 'prompts' key in response, got: %v", b)
+	assert.Len(t, prompts, 1)
+}
+
+func TestAdminListPrompts_TenantIDHeader_Fallback(t *testing.T) {
+	srv := buildTestServer(t)
+	defer srv.Close()
+	gw := map[string]string{"X-Gateway-Secret": "test-secret", "X-Tenant-ID": "t-hdr"}
+
+	// seed one prompt via body tenant_id
+	post(t, srv, "/admin/prompts", map[string]any{
+		"tenant_id": "t-hdr", "name": "hdr-test", "system_prompt": "hi",
+	}, gw)
+
+	// list without query param — should fall back to X-Tenant-ID header
+	resp := get(t, srv, "/admin/prompts", gw)
+	require.Equal(t, 200, resp.StatusCode)
+	b := jsonBody(t, resp)
+	prompts, ok := b["prompts"].([]any)
+	require.True(t, ok, "expected 'prompts' key, got: %v", b)
+	assert.Len(t, prompts, 1)
+}
+
+func TestAdminListPrompts_NoTenantID_Returns400(t *testing.T) {
+	srv := buildTestServer(t)
+	defer srv.Close()
+	gw := map[string]string{"X-Gateway-Secret": "test-secret"}
+
+	resp := get(t, srv, "/admin/prompts", gw)
+	assert.Equal(t, 400, resp.StatusCode)
+}
+
+func TestAdminGetPrompt_TenantIDHeader_Fallback(t *testing.T) {
+	srv := buildTestServer(t)
+	defer srv.Close()
+	gw := map[string]string{"X-Gateway-Secret": "test-secret"}
+
+	create := post(t, srv, "/admin/prompts", map[string]any{
+		"tenant_id": "t-gethdr", "name": "get-hdr", "system_prompt": "hi",
+	}, gw)
+	require.Equal(t, 201, create.StatusCode)
+	id := fmt.Sprintf("%v", jsonBody(t, create)["id"])
+
+	// GET with header instead of query param
+	gw["X-Tenant-ID"] = "t-gethdr"
+	resp := get(t, srv, "/admin/prompts/"+id, gw)
+	require.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, "get-hdr", jsonBody(t, resp)["name"])
+}
+
+func TestAdminListVersions_TenantIDHeader_Fallback(t *testing.T) {
+	srv := buildTestServer(t)
+	defer srv.Close()
+	gw := map[string]string{"X-Gateway-Secret": "test-secret"}
+
+	create := post(t, srv, "/admin/prompts", map[string]any{
+		"tenant_id": "t-verhdr", "name": "ver-hdr", "system_prompt": "v1",
+	}, gw)
+	require.Equal(t, 201, create.StatusCode)
+	id := fmt.Sprintf("%v", jsonBody(t, create)["id"])
+
+	// list versions with header fallback
+	gw["X-Tenant-ID"] = "t-verhdr"
+	resp := get(t, srv, "/admin/prompts/"+id+"/versions", gw)
+	require.Equal(t, 200, resp.StatusCode)
+	b := jsonBody(t, resp)
+	versions, ok := b["versions"].([]any)
+	require.True(t, ok)
+	assert.Len(t, versions, 1)
+}

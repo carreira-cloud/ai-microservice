@@ -180,7 +180,10 @@ func listPromptsHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenantID := c.Query("tenant_id")
 		if tenantID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id query param required"})
+			tenantID = c.GetHeader("X-Tenant-ID")
+		}
+		if tenantID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id_required"})
 			return
 		}
 		list, err := repo.List(c.Request.Context(), tenantID)
@@ -188,7 +191,7 @@ func listPromptsHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"templates": list, "count": len(list)})
+		c.JSON(http.StatusOK, gin.H{"prompts": list, "count": len(list)})
 	}
 }
 
@@ -220,7 +223,10 @@ func getPromptHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenantID := c.Query("tenant_id")
 		if tenantID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id query param required"})
+			tenantID = c.GetHeader("X-Tenant-ID")
+		}
+		if tenantID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id_required"})
 			return
 		}
 		tmpl, err := repo.FindByID(c.Request.Context(), tenantID, c.Param("id"))
@@ -268,7 +274,10 @@ func listVersionsHandler(repo *repository.PromptRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tenantID := c.Query("tenant_id")
 		if tenantID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id query param required"})
+			tenantID = c.GetHeader("X-Tenant-ID")
+		}
+		if tenantID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "tenant_id_required"})
 			return
 		}
 		versions, err := repo.ListVersions(c.Request.Context(), tenantID, c.Param("id"))
