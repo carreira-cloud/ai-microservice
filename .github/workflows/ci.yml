@@ -3,7 +3,7 @@ name: CI/CD – ai-microservice
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v*-lab"]
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, labeled]
@@ -37,7 +37,7 @@ jobs:
       - name: Compute routing
         id: ctx
         env:
-          IS_TAG:     ${{ startsWith(github.ref, 'refs/tags/') }}
+          IS_TAG:     ${{ startsWith(github.ref, 'refs/tags/') && endsWith(github.ref_name, '-lab') }}
           IS_MAIN:    ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
           IS_LABELED: ${{ github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'deploy_tst' }}
           PR_NUMBER:  ${{ github.event.pull_request.number }}
