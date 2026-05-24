@@ -86,7 +86,12 @@ jobs:
     runs-on: ai-microservice-tst
     needs: context
     env:
-      GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.golangci-lint-cache
+      # Go caches live on the ARC runner NFS PVC (mounted at /home/runner/.cache).
+      # Out of the kubelet's ephemeral-storage accounting → no eviction risk.
+      # Shared across runner pods → warm-cache by default after first run.
+      GOMODCACHE: /home/runner/.cache/go-mod
+      GOCACHE: /home/runner/.cache/go-build
+      GOLANGCI_LINT_CACHE: /home/runner/.cache/golangci-lint
     steps:
       - uses: actions/checkout@v4
 
@@ -96,10 +101,6 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
-      - name: Configure Go caches for ARC runner
-        run: |
-          echo "GOMODCACHE=${{ github.workspace }}/.go/pkg/mod" >> "$GITHUB_ENV"
-          echo "GOCACHE=${{ github.workspace }}/.go-cache" >> "$GITHUB_ENV"
 
       - name: go vet
         run: go vet ./...
@@ -108,7 +109,9 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.11.3
-          args: --timeout=5m
+          # 15m headroom for cold-cache runs on NFS-backed cache.
+          # Warm runs land inside ~2m.
+          args: --timeout=15m
           skip-cache: true
 
   # ─────────────────────────────────────────────────────────────────────────
@@ -118,6 +121,9 @@ jobs:
     name: Unit Tests
     runs-on: ai-microservice-tst
     needs: lint
+    env:
+      GOMODCACHE: /home/runner/.cache/go-mod
+      GOCACHE: /home/runner/.cache/go-build
     steps:
       - uses: actions/checkout@v4
 
@@ -127,10 +133,6 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
-      - name: Configure Go caches for ARC runner
-        run: |
-          echo "GOMODCACHE=${{ github.workspace }}/.go/pkg/mod" >> "$GITHUB_ENV"
-          echo "GOCACHE=${{ github.workspace }}/.go-cache" >> "$GITHUB_ENV"
 
       - name: Download dependencies
         run: go mod download
@@ -163,6 +165,9 @@ jobs:
     name: Acceptance Tests
     runs-on: ai-microservice-tst
     needs: lint
+    env:
+      GOMODCACHE: /home/runner/.cache/go-mod
+      GOCACHE: /home/runner/.cache/go-build
     steps:
       - uses: actions/checkout@v4
 
@@ -172,10 +177,6 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
-      - name: Configure Go caches for ARC runner
-        run: |
-          echo "GOMODCACHE=${{ github.workspace }}/.go/pkg/mod" >> "$GITHUB_ENV"
-          echo "GOCACHE=${{ github.workspace }}/.go-cache" >> "$GITHUB_ENV"
 
       - name: Download dependencies
         run: go mod download
